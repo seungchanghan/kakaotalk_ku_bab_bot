@@ -39,6 +39,19 @@ test("selectTarget recognizes aliases and tomorrow", () => {
   });
 });
 
+test("bare 밥 command defaults to today's lunch overview", () => {
+  const target = selectTarget(
+    DATA,
+    "밥",
+    new Date("2026-07-30T03:00:00Z")
+  );
+  assert.deepEqual(target, {
+    restaurantKey: null,
+    date: "2026-07-30",
+    mealType: "중식"
+  });
+});
+
 test("selectTarget recognizes relative dates, weekdays, short dates, and a typo", () => {
   const now = new Date("2026-07-30T03:00:00Z");
   const restaurants = {
