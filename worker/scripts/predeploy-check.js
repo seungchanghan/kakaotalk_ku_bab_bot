@@ -23,8 +23,13 @@ export function validateFreeOnlyConfig(config) {
   if (config.workers_dev !== true) {
     errors.push("workers_dev는 true여야 합니다.");
   }
-  if (config.limits?.cpu_ms !== 10) {
-    errors.push("limits.cpu_ms는 무료 플랜 한도인 10이어야 합니다.");
+  if (config.preview_urls !== false) {
+    errors.push("불필요한 버전별 공개 주소를 막기 위해 preview_urls는 false여야 합니다.");
+  }
+  if (Object.hasOwn(config, "limits")) {
+    errors.push(
+      "Free 플랜은 CPU limits 설정을 지원하지 않으므로 limits를 지정하면 안 됩니다."
+    );
   }
   if (
     !Array.isArray(config.secrets?.required) ||

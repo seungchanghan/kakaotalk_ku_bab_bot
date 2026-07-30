@@ -4,6 +4,7 @@
   "main": "src/index.js",
   "compatibility_date": "2026-07-30",
   "workers_dev": true,
+  "preview_urls": false,
   "vars": {
     "MENU_DATA_URL": "https://seungchanghan.github.io/kakaotalk_ku_bab_bot/data/menu.json"
   },
@@ -11,8 +12,5 @@
     "required": [
       "KAKAO_SKILL_SECRET"
     ]
-  },
-  "limits": {
-    "cpu_ms": 10
   }
 }

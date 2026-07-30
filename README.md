@@ -171,7 +171,9 @@ KAKAO_SKILL_SECRET=로컬테스트용-32자-이상의-충분히-긴-임의-문�
 - Wrangler에도 `KAKAO_SKILL_SECRET`을 필수 secret으로 선언해, 누락 시
   CLI 배포 단계에서 한 번 더 중단합니다.
 - `/health`도 동일한 비밀 헤더가 필요합니다.
+- 버전별 Preview URL은 비활성화해 운영 `workers.dev` 주소만 노출합니다.
 - `npm run deploy`는 먼저 무료 전용 사전검사를 실행합니다. 플레이스홀더,
-  유료 가능 바인딩, 커스텀 route, 10ms보다 큰 CPU 설정이 있으면 배포를
-  중단합니다. 이 검사는 Cloudflare 계정의 실제 요금제를 대신 확인하지
-  못하므로 대시보드의 `Workers Free` 확인은 여전히 필수입니다.
+  유료 가능 바인딩, 커스텀 route, Paid 전용 CPU `limits` 설정이 있으면
+  배포를 중단합니다. Free 플랜의 요청당 CPU 10ms 제한은 Cloudflare가
+  자체적으로 강제합니다. 이 검사는 Cloudflare 계정의 실제 요금제를 대신
+  확인하지 못하므로 대시보드의 `Workers Free` 확인은 여전히 필수입니다.
