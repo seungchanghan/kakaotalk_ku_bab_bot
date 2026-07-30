@@ -1,0 +1,42 @@
+:root {
+  color-scheme: light;
+  font-family: system-ui, sans-serif;
+}
+
+body {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 32px 20px 64px;
+  background: #f6f3ef;
+  color: #241f20;
+}
+
+h1 {
+  color: #8b0029;
+}
+
+.meta {
+  color: #6d6567;
+}
+
+.card {
+  margin: 16px 0;
+  padding: 18px;
+  border-radius: 14px;
+  background: white;
+  box-shadow: 0 3px 14px #2e12171a;
+}
+
+.meal {
+  white-space: pre-line;
+  line-height: 1.55;
+}
+
+.error {
+  color: #9b1c1c;
+}
+
+a {
+  color: #8b0029;
+}
+

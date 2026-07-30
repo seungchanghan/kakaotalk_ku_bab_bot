@@ -1,0 +1,18 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "ku-meal-kakao-skill",
+  "main": "src/index.js",
+  "compatibility_date": "2026-07-30",
+  "workers_dev": true,
+  "vars": {
+    "MENU_DATA_URL": "https://seungchanghan.github.io/kakaotalk_ku_bab_bot/data/menu.json"
+  },
+  "secrets": {
+    "required": [
+      "KAKAO_SKILL_SECRET"
+    ]
+  },
+  "limits": {
+    "cpu_ms": 10
+  }
+}

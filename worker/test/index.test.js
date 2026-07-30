@@ -1,0 +1,209 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+import { formatMenu, handleRequest, selectTarget } from "../src/index.js";
+
+
+const DATA = {
+  schemaVersion: 1,
+  generatedAt: "2026-07-30T12:00:00+09:00",
+  restaurants: {
+    science: {
+      name: "자연계 학생식당",
+      shortName: "자연계",
+      aliases: ["자연계", "애기능"],
+      sourceUrl: "https://example.com/science",
+      days: {
+        "2026-07-30": {
+          중식: [{ title: "", content: "제육덮밥\n배추김치", notes: "" }]
+        },
+        "2026-07-31": {
+          중식: [{ title: "", content: "카레라이스\n깍두기", notes: "" }]
+        }
+      }
+    }
+  }
+};
+const SECRET = "test-secret-at-least-thirty-two-characters";
+
+
+test("selectTarget recognizes aliases and tomorrow", () => {
+  const target = selectTarget(
+    DATA,
+    "내일 애기능 점심",
+    new Date("2026-07-30T03:00:00Z")
+  );
+  assert.deepEqual(target, {
+    restaurantKey: "science",
+    date: "2026-07-31",
+    mealType: "중식"
+  });
+});
+
+test("formatMenu returns a detailed menu", () => {
+  const text = formatMenu(DATA, {
+    restaurantKey: "science",
+    date: "2026-07-30",
+    mealType: "중식"
+  });
+  assert.match(text, /제육덮밥/);
+  assert.match(text, /자연계/);
+});
+
+test("Kakao endpoint validates secret and returns version 2.0", async () => {
+  const request = new Request("https://worker.example/kakao/meal", {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      "x-kakao-skill-secret": SECRET
+    },
+    body: JSON.stringify({ userRequest: { utterance: "자연계 오늘 점심" } })
+  });
+  const fakeFetch = async () =>
+    new Response(JSON.stringify(DATA), {
+      headers: { "content-type": "application/json" }
+    });
+
+  const response = await handleRequest(
+    request,
+    {
+      KAKAO_SKILL_SECRET: SECRET,
+      MENU_DATA_URL: "https://tester.github.io/ku-meal/data/menu.json"
+    },
+    fakeFetch
+  );
+  const body = await response.json();
+
+  assert.equal(response.status, 200);
+  assert.equal(body.version, "2.0");
+  assert.match(body.template.outputs[0].simpleText.text, /제육덮밥/);
+});
+
+test("missing or short secret fails closed", async () => {
+  const request = () =>
+    new Request("https://worker.example/kakao/meal", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: "{}"
+    });
+  let fetchCalled = false;
+  const fakeFetch = async () => {
+    fetchCalled = true;
+    return new Response("{}");
+  };
+
+  const missing = await handleRequest(
+    request(),
+    { MENU_DATA_URL: "https://tester.github.io/ku-meal/data/menu.json" },
+    fakeFetch
+  );
+  const short = await handleRequest(
+    request(),
+    {
+      KAKAO_SKILL_SECRET: "too-short",
+      MENU_DATA_URL: "https://tester.github.io/ku-meal/data/menu.json"
+    },
+    fakeFetch
+  );
+
+  assert.equal(missing.status, 503);
+  assert.equal(short.status, 503);
+  assert.equal(fetchCalled, false);
+});
+
+test("wrong secret is rejected before fetching menu data", async () => {
+  const request = new Request("https://worker.example/kakao/meal", {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      "x-kakao-skill-secret": "wrong"
+    },
+    body: "{}"
+  });
+  let fetchCalled = false;
+
+  const response = await handleRequest(
+    request,
+    {
+      KAKAO_SKILL_SECRET: SECRET,
+      MENU_DATA_URL: "https://tester.github.io/ku-meal/data/menu.json"
+    },
+    async () => {
+      fetchCalled = true;
+      return new Response("{}");
+    }
+  );
+
+  assert.equal(response.status, 401);
+  assert.equal(fetchCalled, false);
+});
+
+test("oversized authorized request is rejected before fetching", async () => {
+  const request = new Request("https://worker.example/kakao/meal", {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      "content-length": "40000",
+      "x-kakao-skill-secret": SECRET
+    },
+    body: "{}"
+  });
+  let fetchCalled = false;
+
+  const response = await handleRequest(
+    request,
+    {
+      KAKAO_SKILL_SECRET: SECRET,
+      MENU_DATA_URL: "https://tester.github.io/ku-meal/data/menu.json"
+    },
+    async () => {
+      fetchCalled = true;
+      return new Response("{}");
+    }
+  );
+
+  assert.equal(response.status, 413);
+  assert.equal(fetchCalled, false);
+});
+
+test("health endpoint also requires the secret", async () => {
+  const unauthorized = await handleRequest(
+    new Request("https://worker.example/health"),
+    { KAKAO_SKILL_SECRET: SECRET }
+  );
+  const authorized = await handleRequest(
+    new Request("https://worker.example/health", {
+      headers: { "x-kakao-skill-secret": SECRET }
+    }),
+    { KAKAO_SKILL_SECRET: SECRET }
+  );
+
+  assert.equal(unauthorized.status, 401);
+  assert.equal(authorized.status, 200);
+});
+
+test("menu data URL is restricted to GitHub Pages JSON", async () => {
+  const request = new Request("https://worker.example/kakao/meal", {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      "x-kakao-skill-secret": SECRET
+    },
+    body: "{}"
+  });
+  let fetchCalled = false;
+
+  const response = await handleRequest(
+    request,
+    {
+      KAKAO_SKILL_SECRET: SECRET,
+      MENU_DATA_URL: "https://attacker.example/menu.json"
+    },
+    async () => {
+      fetchCalled = true;
+      return new Response("{}");
+    }
+  );
+
+  assert.equal(response.status, 503);
+  assert.equal(fetchCalled, false);
+});
