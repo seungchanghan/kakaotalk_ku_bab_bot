@@ -157,8 +157,12 @@ KAKAO_SKILL_SECRET=로컬테스트용-32자-이상의-충분히-긴-임의-문�
 - Workers Paid, R2, KV, D1, Workers AI, Browser, Queue, Durable Objects를
   활성화하지 않습니다.
 - GitHub 저장소는 공개 저장소로 두고 표준 `ubuntu-latest` runner만 사용합니다.
-- GitHub `Settings → Billing → Budgets and alerts`에서 Actions 예산을 0달러로
-  만들고 `Stop usage when budget limit is reached`를 켭니다.
+- GitHub 개인 계정의 `Settings → Billing and licensing → Budgets and alerts`에서
+  Actions 제품 예산을 **화면이 허용하는 최소 금액**으로 만듭니다. GitHub의
+  현재 공식 문서상 개인 계정(user-level) 예산은 한도 도달 시 항상
+  하드스톱됩니다. `Stop usage when budget limit is reached`가 별도로 보이는
+  계정 범위에서는 반드시 체크합니다.
+- 같은 화면의 `Included usage alerts`에서 90%/100% 이메일 알림을 켭니다.
 - GitHub 결제수단을 등록하지 않는 것이 가장 강한 추가 방어입니다.
 - 모든 GitHub Actions는 이동 가능한 버전 태그가 아닌 전체 커밋 SHA에
   고정되어 있습니다.
