@@ -31,7 +31,10 @@ jobs:
           python-version: "3.13"
 
       - name: Collect Korea University menus
-        run: python scraper/fetch_menus.py
+        run: >-
+          python scraper/fetch_menus.py
+          --history-url
+          https://seungchanghan.github.io/kakaotalk_ku_bab_bot/data/menu.json
 
       - name: Configure Pages
         uses: actions/configure-pages@983d7736d9b0ae728b81ab479565c72886d7745b # v5

@@ -39,6 +39,31 @@ test("selectTarget recognizes aliases and tomorrow", () => {
   });
 });
 
+test("selectTarget recognizes relative dates, weekdays, short dates, and a typo", () => {
+  const now = new Date("2026-07-30T03:00:00Z");
+  const restaurants = {
+    ...DATA.restaurants,
+    dormitory: {
+      shortName: "안암학사",
+      aliases: ["안암학사", "기숙사", "긱식"],
+      days: {}
+    }
+  };
+  const data = { ...DATA, restaurants };
+
+  assert.equal(selectTarget(data, "어제 학식", now).date, "2026-07-29");
+  assert.equal(selectTarget(data, "그저께 학식", now).date, "2026-07-28");
+  assert.equal(selectTarget(data, "모레 학식", now).date, "2026-08-01");
+  assert.equal(selectTarget(data, "지난주 금요일 학식", now).date, "2026-07-24");
+  assert.equal(selectTarget(data, "금요일 학식", now).date, "2026-07-31");
+  assert.equal(selectTarget(data, "7월 29일 학식", now).date, "2026-07-29");
+  assert.equal(selectTarget(data, "7/29 학식", now).date, "2026-07-29");
+  assert.equal(
+    selectTarget(data, "안암학샤 오늘 저녁", now).restaurantKey,
+    "dormitory"
+  );
+});
+
 test("formatMenu returns a detailed menu", () => {
   const text = formatMenu(DATA, {
     restaurantKey: "science",

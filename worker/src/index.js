@@ -7,6 +7,15 @@ const MEAL_TYPES = [
   ["석식", ["석식", "저녁"]],
   ["중식", ["중식", "점심"]]
 ];
+const WEEKDAYS = new Map([
+  ["월", 0],
+  ["화", 1],
+  ["수", 2],
+  ["목", 3],
+  ["금", 4],
+  ["토", 5],
+  ["일", 6]
+]);
 
 export default {
   async fetch(request, env) {
@@ -80,28 +89,125 @@ export function selectTarget(data, utterance, now) {
     [restaurant.shortName, restaurant.name, ...(restaurant.aliases || [])]
       .filter(Boolean)
       .some((alias) => normalized.includes(String(alias).replace(/\s+/g, "").toLowerCase()))
-  );
+  ) || findFuzzyRestaurant(restaurants, utterance);
 
   const matchedMeal = MEAL_TYPES.find(([, aliases]) =>
     aliases.some((alias) => normalized.includes(alias))
   );
 
-  let date = dateInSeoul(now);
-  if (normalized.includes("내일")) date = addDays(date, 1);
-  const explicitDate = utterance.match(/(20\d{2})[.\-/년 ]+(\d{1,2})[.\-/월 ]+(\d{1,2})/);
-  if (explicitDate) {
-    date = [
-      explicitDate[1],
-      explicitDate[2].padStart(2, "0"),
-      explicitDate[3].padStart(2, "0")
-    ].join("-");
-  }
+  const date = resolveDate(utterance, normalized, dateInSeoul(now));
 
   return {
     restaurantKey: matchedRestaurant?.[0] || null,
     date,
     mealType: matchedMeal?.[0] || "중식"
   };
+}
+
+function resolveDate(utterance, normalized, today) {
+  const fullDate = utterance.match(
+    /(20\d{2})[.\-/년 ]+(\d{1,2})[.\-/월 ]+(\d{1,2})/
+  );
+  if (fullDate) {
+    return isoDate(fullDate[1], fullDate[2], fullDate[3], today);
+  }
+
+  const shortKoreanDate = utterance.match(/(?:^|\D)(\d{1,2})\s*월\s*(\d{1,2})\s*일?/);
+  const shortNumericDate = utterance.match(
+    /(?:^|\D)(\d{1,2})[./-](\d{1,2})(?![./\d-])/
+  );
+  const shortDate = shortKoreanDate || shortNumericDate;
+  if (shortDate) {
+    return isoDate(today.slice(0, 4), shortDate[1], shortDate[2], today);
+  }
+
+  const relativeDates = [
+    [["그저께", "그제"], -2],
+    [["어제"], -1],
+    [["모레"], 2],
+    [["내일"], 1],
+    [["오늘"], 0]
+  ];
+  for (const [aliases, offset] of relativeDates) {
+    if (aliases.some((alias) => normalized.includes(alias))) {
+      return addDays(today, offset);
+    }
+  }
+
+  const weekday = utterance.match(/(?:(지난|이번|다음)\s*주\s*)?([월화수목금토일])요일/);
+  if (weekday) {
+    const requested = WEEKDAYS.get(weekday[2]);
+    const current = mondayBasedWeekday(today);
+    const weekOffset = weekday[1] === "지난" ? -7 : weekday[1] === "다음" ? 7 : 0;
+    const offset = weekday[1]
+      ? weekOffset - current + requested
+      : (requested - current + 7) % 7;
+    return addDays(today, offset);
+  }
+
+  return today;
+}
+
+function isoDate(year, month, day, fallback) {
+  const value = [
+    String(year),
+    String(month).padStart(2, "0"),
+    String(day).padStart(2, "0")
+  ].join("-");
+  const parsed = new Date(`${value}T00:00:00Z`);
+  if (
+    Number.isNaN(parsed.getTime()) ||
+    parsed.getUTCFullYear() !== Number(year) ||
+    parsed.getUTCMonth() + 1 !== Number(month) ||
+    parsed.getUTCDate() !== Number(day)
+  ) {
+    return fallback;
+  }
+  return value;
+}
+
+function mondayBasedWeekday(isoDateValue) {
+  const day = new Date(`${isoDateValue}T00:00:00Z`).getUTCDay();
+  return (day + 6) % 7;
+}
+
+function findFuzzyRestaurant(restaurants, utterance) {
+  const tokens = String(utterance).toLowerCase().match(/[\p{L}\p{N}]+/gu) || [];
+  return restaurants.find(([, restaurant]) => {
+    const aliases = [restaurant.shortName, ...(restaurant.aliases || [])]
+      .filter(Boolean)
+      .map((alias) => String(alias).replace(/\s+/g, "").toLowerCase())
+      .filter((alias) => alias.length >= 3);
+    return aliases.some((alias) =>
+      tokens.some((token) =>
+        Math.abs(token.length - alias.length) <= 1 &&
+        editDistanceAtMostOne(token, alias)
+      )
+    );
+  });
+}
+
+function editDistanceAtMostOne(left, right) {
+  if (left === right) return true;
+  if (Math.abs(left.length - right.length) > 1) return false;
+
+  let first = left;
+  let second = right;
+  if (first.length > second.length) [first, second] = [second, first];
+
+  let edits = 0;
+  for (let i = 0, j = 0; i < first.length || j < second.length;) {
+    if (first[i] === second[j]) {
+      i += 1;
+      j += 1;
+      continue;
+    }
+    edits += 1;
+    if (edits > 1) return false;
+    if (first.length === second.length) i += 1;
+    j += 1;
+  }
+  return true;
 }
 
 export function formatMenu(data, target) {

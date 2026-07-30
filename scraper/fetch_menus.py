@@ -8,11 +8,12 @@ import json
 import re
 import sys
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import date, datetime, timedelta
 from html.parser import HTMLParser
 from pathlib import Path
 from typing import Iterable
 from urllib.error import HTTPError, URLError
+from urllib.parse import urlsplit
 from urllib.request import Request, urlopen
 from zoneinfo import ZoneInfo
 
@@ -20,6 +21,9 @@ from zoneinfo import ZoneInfo
 SEOUL = ZoneInfo("Asia/Seoul")
 NO_MENU_TEXT = "등록된 식단내용이(가) 없습니다."
 DATE_RE = re.compile(r"(\d{4})\.(\d{2})\.(\d{2})")
+HISTORY_RETENTION_DAYS = 90
+MAX_HISTORY_BYTES = 2 * 1024 * 1024
+MAX_PUBLISHED_BYTES = 240 * 1024
 
 RESTAURANTS = {
     "songrim": {
@@ -238,6 +242,151 @@ def fetch_html(url: str, timeout: int = 20) -> str:
         return response.read().decode(charset, errors="replace")
 
 
+def fetch_history(url: str, timeout: int = 20) -> dict:
+    if not _is_allowed_history_url(url):
+        raise ValueError("과거 식단 URL은 GitHub Pages의 HTTPS data/menu.json이어야 합니다.")
+
+    request = Request(
+        url,
+        headers={
+            "User-Agent": "KU-Meal-Bot/1.0 history merge",
+            "Accept": "application/json",
+        },
+    )
+    with urlopen(request, timeout=timeout) as response:
+        if not _is_allowed_history_url(response.geturl()):
+            raise ValueError("과거 식단 URL이 허용되지 않은 주소로 이동했습니다.")
+        payload = response.read(MAX_HISTORY_BYTES + 1)
+    if len(payload) > MAX_HISTORY_BYTES:
+        raise ValueError("과거 식단 JSON이 허용 크기를 초과했습니다.")
+
+    history = json.loads(payload.decode("utf-8"))
+    if (
+        not isinstance(history, dict)
+        or history.get("schemaVersion") != 1
+        or not isinstance(history.get("restaurants"), dict)
+    ):
+        raise ValueError("과거 식단 JSON 스키마가 올바르지 않습니다.")
+    return history
+
+
+def _is_allowed_history_url(url: str) -> bool:
+    parsed = urlsplit(url)
+    if (
+        parsed.scheme != "https"
+        or not parsed.hostname
+        or not parsed.hostname.endswith(".github.io")
+        or not parsed.path.endswith("/data/menu.json")
+        or parsed.username
+        or parsed.password
+        or parsed.query
+        or parsed.fragment
+    ):
+        return False
+    return True
+
+
+def merge_history(
+    snapshot: dict,
+    history: dict | None,
+    now: datetime,
+    retention_days: int = HISTORY_RETENTION_DAYS,
+) -> dict:
+    snapshot["historyRetentionDays"] = retention_days
+    if not history or history.get("schemaVersion") != 1:
+        return snapshot
+
+    cutoff = now.astimezone(SEOUL).date() - timedelta(days=retention_days - 1)
+    old_restaurants = history.get("restaurants", {})
+
+    for key, current in snapshot["restaurants"].items():
+        old = old_restaurants.get(key, {})
+        old_days = old.get("days", {}) if isinstance(old, dict) else {}
+        current_days = current.get("days", {})
+        merged_days: dict = {}
+
+        for source in (old_days, current_days):
+            if not isinstance(source, dict):
+                continue
+            for day_text, meals in source.items():
+                try:
+                    menu_date = date.fromisoformat(day_text)
+                except (TypeError, ValueError):
+                    continue
+                if menu_date < cutoff or not _valid_meals(meals):
+                    continue
+                merged_days[day_text] = _sanitize_meals(meals)
+
+        current["days"] = dict(sorted(merged_days.items()))
+
+    return snapshot
+
+
+def _valid_meals(meals: object) -> bool:
+    if not isinstance(meals, dict):
+        return False
+    for meal_type, entries in meals.items():
+        if meal_type not in {"조식", "중식", "석식"} or not isinstance(entries, list):
+            return False
+        for entry in entries:
+            if not isinstance(entry, dict):
+                return False
+            if any(
+                not isinstance(entry.get(field, ""), str)
+                for field in ("title", "content", "notes")
+            ):
+                return False
+    return True
+
+
+def _sanitize_meals(meals: dict) -> dict:
+    return {
+        meal_type: [
+            {
+                "title": entry.get("title", ""),
+                "content": entry.get("content", ""),
+                "notes": entry.get("notes", ""),
+            }
+            for entry in entries
+        ]
+        for meal_type, entries in meals.items()
+    }
+
+
+def enforce_snapshot_size(
+    snapshot: dict,
+    maximum_bytes: int = MAX_PUBLISHED_BYTES,
+) -> dict:
+    snapshot["historySizeLimitBytes"] = maximum_bytes
+    snapshot["historyPrunedDays"] = 0
+    removed = 0
+
+    def encoded_size() -> int:
+        return len(
+            (json.dumps(snapshot, ensure_ascii=False, indent=2) + "\n").encode("utf-8")
+        )
+
+    while encoded_size() > maximum_bytes:
+        candidates = [
+            (day_text, restaurant)
+            for restaurant in snapshot.get("restaurants", {}).values()
+            if isinstance(restaurant, dict)
+            for day_text in restaurant.get("days", {})
+        ]
+        if not candidates:
+            break
+        oldest = min(day_text for day_text, _ in candidates)
+        for day_text, restaurant in candidates:
+            if day_text == oldest:
+                restaurant["days"].pop(day_text, None)
+                removed += 1
+        snapshot["historyPrunedDays"] = removed
+
+    if encoded_size() > maximum_bytes:
+        raise ValueError("식단 JSON 메타데이터가 배포 크기 제한을 초과했습니다.")
+    return snapshot
+
+
 def build_snapshot(
     selected: Iterable[str] | None = None,
     now: datetime | None = None,
@@ -283,13 +432,34 @@ def main() -> int:
         choices=sorted(RESTAURANTS),
         help="특정 식당만 수집할 때 반복 지정",
     )
+    parser.add_argument(
+        "--history-url",
+        help="이전에 배포한 GitHub Pages menu.json URL",
+    )
     args = parser.parse_args()
 
-    snapshot, successes = build_snapshot(args.restaurant)
+    now = datetime.now(SEOUL)
+    snapshot, successes = build_snapshot(args.restaurant, now=now)
     if successes == 0:
         for error in snapshot["errors"]:
             print(f"[error] {error['restaurant']}: {error['message']}", file=sys.stderr)
         print("[error] 모든 식당 수집에 실패하여 기존 배포를 유지합니다.", file=sys.stderr)
+        return 1
+
+    history = None
+    if args.history_url:
+        try:
+            history = fetch_history(args.history_url)
+        except (HTTPError, URLError, TimeoutError, ValueError, OSError, json.JSONDecodeError) as error:
+            print(
+                f"[warning] 과거 식단을 불러오지 못해 현재 주간 데이터만 배포합니다: "
+                f"{type(error).__name__}: {error}",
+                file=sys.stderr,
+            )
+    try:
+        snapshot = enforce_snapshot_size(merge_history(snapshot, history, now))
+    except ValueError as error:
+        print(f"[error] 안전한 배포 크기로 식단을 정리하지 못했습니다: {error}", file=sys.stderr)
         return 1
 
     output = Path(args.output)
@@ -306,4 +476,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-
