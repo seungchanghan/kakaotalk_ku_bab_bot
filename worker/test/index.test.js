@@ -49,6 +49,49 @@ test("formatMenu returns a detailed menu", () => {
   assert.match(text, /자연계/);
 });
 
+test("overview summarizes actual dishes instead of internal category labels", () => {
+  const data = {
+    schemaVersion: 1,
+    restaurants: {
+      science: {
+        shortName: "자연계",
+        days: {
+          "2026-07-31": {
+            중식: [{
+              title: "",
+              content:
+                "[학생식당]\n성준이의팟타이 새우볼꼬치 쌀국수장국 단무지 배추김치 양배추샐러드\n" +
+                "(사이드메뉴: 닭강정)\n[교직원식당]\n김치날치알밥 물만두찜"
+            }]
+          }
+        }
+      },
+      industry: {
+        shortName: "산학관",
+        days: {
+          "2026-07-31": {
+            중식: [{
+              title: "중식B",
+              content: "치킨까스*소스 콩나물국 쫄면야채무침 팽이버섯볶음 흑미밥"
+            }]
+          }
+        }
+      }
+    }
+  };
+
+  const text = formatMenu(data, {
+    restaurantKey: null,
+    date: "2026-07-31",
+    mealType: "중식"
+  });
+
+  assert.doesNotMatch(text, /\[학생식당\]|중식B/);
+  assert.match(text, /성준이의팟타이 · 새우볼꼬치 · 쌀국수장국 외 3가지/);
+  assert.match(text, /치킨까스·소스 · 콩나물국 · 쫄면야채무침 외 2가지/);
+  assert.match(text, /7월 31일.*중식/);
+});
+
 test("Kakao endpoint validates secret and returns version 2.0", async () => {
   const request = new Request("https://worker.example/kakao/meal", {
     method: "POST",

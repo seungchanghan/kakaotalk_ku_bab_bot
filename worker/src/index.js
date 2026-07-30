@@ -70,7 +70,7 @@ export async function handleRequest(request, env, fetchImpl = fetch) {
   const utterance = String(payload?.userRequest?.utterance || "");
   const target = selectTarget(data, utterance, new Date());
   const text = formatMenu(data, target);
-  return kakaoText(text, quickReplies());
+  return kakaoText(text, quickReplies(target));
 }
 
 export function selectTarget(data, utterance, now) {
@@ -137,24 +137,68 @@ export function formatMenu(data, target) {
   for (const restaurant of Object.values(data.restaurants)) {
     const entries = restaurant.days?.[target.date]?.[target.mealType] || [];
     if (!entries.length) continue;
-    const first = entries[0];
-    const summary = (first.title || first.content || "").split("\n")[0];
-    summaries.push(`• ${restaurant.shortName}: ${summary}`);
+    const summary = summarizeEntry(entries[0]);
+    summaries.push(`🏫 ${restaurant.shortName}\n${summary}`);
   }
   return truncate([
-    `🍚 ${target.date} ${target.mealType} 한눈에 보기`,
+    `🍚 ${formatKoreanDate(target.date)} ${target.mealType}`,
     "",
-    ...(summaries.length ? summaries : ["등록된 식단이 없습니다."]),
+    ...(summaries.length ? [summaries.join("\n\n")] : ["등록된 식단이 없습니다."]),
     "",
-    "식당 이름을 입력하면 상세 메뉴를 보여드려요."
+    "아래에서 식당을 누르면 전체 메뉴를 보여드려요."
   ].join("\n"));
 }
 
-function quickReplies() {
+function summarizeEntry(entry) {
+  const lines = String(entry?.content || "")
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
+  const menuLines = [];
+
+  for (const line of lines) {
+    if (/^\[[^\]]+\]$/.test(line)) {
+      if (menuLines.length) break;
+      continue;
+    }
+    if (/^\(.*사이드\s*메뉴.*\)$/i.test(line)) continue;
+    if (/^[₩￦]?\s*[\d,]+\s*원?$/.test(line)) continue;
+    menuLines.push(line);
+  }
+
+  const tokens = menuLines
+    .flatMap((line) => line.split(/\s+/))
+    .map((token) => token.replace(/\*/g, "·"))
+    .filter(Boolean);
+
+  if (!tokens.length) {
+    const title = String(entry?.title || "")
+      .replace(/^\[|\]$/g, "")
+      .trim();
+    return title || "메뉴 정보 확인";
+  }
+
+  const visible = tokens.slice(0, 3).join(" · ");
+  const remainder = tokens.length - 3;
+  return remainder > 0 ? `${visible} 외 ${remainder}가지` : visible;
+}
+
+function formatKoreanDate(isoDate) {
+  const date = new Date(`${isoDate}T12:00:00+09:00`);
+  if (Number.isNaN(date.getTime())) return isoDate;
+  return new Intl.DateTimeFormat("ko-KR", {
+    timeZone: SEOUL_TIME_ZONE,
+    month: "long",
+    day: "numeric",
+    weekday: "short"
+  }).format(date);
+}
+
+function quickReplies(target) {
   return ["자연계", "산학관", "학생회관", "안암학사"].map((name) => ({
     label: name,
     action: "message",
-    messageText: `${name} 오늘 점심`
+    messageText: `${name} ${target.date} ${target.mealType}`
   }));
 }
 
