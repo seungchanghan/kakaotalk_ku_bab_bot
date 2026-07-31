@@ -24,6 +24,28 @@ const DATA = {
   }
 };
 const SECRET = "test-secret-at-least-thirty-two-characters";
+const MEDICINE_DATA = {
+  ...DATA,
+  restaurants: {
+    ...DATA.restaurants,
+    medicine: {
+      name: "의과대학 본관식당",
+      shortName: "의대본관",
+      aliases: ["의대본관", "의대식당"],
+      sourceUrl:
+        "https://medicine.korea.ac.kr/kr/news/notice/view.do?articleNo=56085",
+      fetchedAt: "2026-07-30T12:00:00+09:00",
+      weekRange: "2026-07-27 ~ 2026-07-31",
+      days: {},
+      imageMenu: {
+        articleNo: 56085,
+        weekStart: "2026-07-27",
+        weekEnd: "2026-07-31",
+        imagePath: "medicine-menu/article-56085.png"
+      }
+    }
+  }
+};
 
 
 test("selectTarget recognizes aliases and tomorrow", () => {
@@ -137,7 +159,7 @@ test("Kakao endpoint validates secret and returns version 2.0", async () => {
       "content-type": "application/json",
       "x-kakao-skill-secret": SECRET
     },
-    body: JSON.stringify({ userRequest: { utterance: "자연계 오늘 점심" } })
+    body: JSON.stringify({ userRequest: { utterance: "자연계 2026-07-30 점심" } })
   });
   const fakeFetch = async () =>
     new Response(JSON.stringify(DATA), {
@@ -157,6 +179,72 @@ test("Kakao endpoint validates secret and returns version 2.0", async () => {
   assert.equal(response.status, 200);
   assert.equal(body.version, "2.0");
   assert.match(body.template.outputs[0].simpleText.text, /제육덮밥/);
+});
+
+test("medicine cafeteria returns text and a hosted simpleImage", async () => {
+  const request = new Request("https://worker.example/kakao/meal", {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      "x-kakao-skill-secret": SECRET
+    },
+    body: JSON.stringify({ userRequest: { utterance: "의대본관 오늘 점심" } })
+  });
+  const fakeFetch = async () =>
+    new Response(JSON.stringify(MEDICINE_DATA), {
+      headers: { "content-type": "application/json" }
+    });
+
+  const response = await handleRequest(
+    request,
+    {
+      KAKAO_SKILL_SECRET: SECRET,
+      MENU_DATA_URL: "https://tester.github.io/ku-meal/data/menu.json"
+    },
+    fakeFetch
+  );
+  const body = await response.json();
+
+  assert.equal(response.status, 200);
+  assert.equal(body.template.outputs.length, 2);
+  assert.match(body.template.outputs[0].simpleText.text, /주간표/);
+  assert.deepEqual(body.template.outputs[1], {
+    simpleImage: {
+      imageUrl:
+        "https://tester.github.io/ku-meal/data/medicine-menu/article-56085.png",
+      altText: "의대본관 2026-07-27 ~ 2026-07-31 주간 식단표"
+    }
+  });
+  assert.ok(
+    body.template.quickReplies.some((reply) => reply.label === "의대본관")
+  );
+});
+
+test("untrusted medicine image paths are not emitted", async () => {
+  const malicious = structuredClone(MEDICINE_DATA);
+  malicious.restaurants.medicine.imageMenu.imagePath =
+    "https://attacker.example/menu.png";
+  const request = new Request("https://worker.example/kakao/meal", {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      "x-kakao-skill-secret": SECRET
+    },
+    body: JSON.stringify({ userRequest: { utterance: "의대식당" } })
+  });
+
+  const response = await handleRequest(
+    request,
+    {
+      KAKAO_SKILL_SECRET: SECRET,
+      MENU_DATA_URL: "https://tester.github.io/ku-meal/data/menu.json"
+    },
+    async () => new Response(JSON.stringify(malicious))
+  );
+  const body = await response.json();
+
+  assert.equal(body.template.outputs.length, 1);
+  assert.ok(body.template.outputs[0].simpleText);
 });
 
 test("missing or short secret fails closed", async () => {

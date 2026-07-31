@@ -8,11 +8,24 @@ const today = new Intl.DateTimeFormat("en-CA", {
 function safeSourceUrl(value) {
   try {
     const url = new URL(value);
-    if (url.protocol === "https:" && url.hostname === "www.korea.ac.kr") {
+    if (
+      url.protocol === "https:" &&
+      ["www.korea.ac.kr", "medicine.korea.ac.kr"].includes(url.hostname)
+    ) {
       return url.href;
     }
   } catch {
     // Invalid or untrusted source URLs are not rendered as links.
+  }
+  return null;
+}
+
+function safeImagePath(value) {
+  if (
+    typeof value === "string" &&
+    /^medicine-menu\/article-\d+\.(?:png|jpg)$/i.test(value)
+  ) {
+    return `./data/${value}`;
   }
   return null;
 }
@@ -43,7 +56,18 @@ fetch("./data/menu.json", { cache: "no-store" })
       title.textContent = restaurant.name;
       card.append(title);
 
-      if (!Object.keys(meals).length) {
+      const menuImagePath = safeImagePath(restaurant.imageMenu?.imagePath);
+      if (menuImagePath) {
+        const period = document.createElement("p");
+        period.className = "meta";
+        period.textContent = restaurant.weekRange || "최신 주간 식단표";
+        const image = document.createElement("img");
+        image.className = "menu-image";
+        image.src = menuImagePath;
+        image.alt = `${restaurant.shortName || restaurant.name} 주간 식단표`;
+        image.loading = "lazy";
+        card.append(period, image);
+      } else if (!Object.keys(meals).length) {
         const empty = document.createElement("p");
         empty.textContent = "오늘 등록된 식단이 없습니다.";
         card.append(empty);
@@ -81,4 +105,3 @@ fetch("./data/menu.json", { cache: "no-store" })
     document.querySelector("#updated").textContent = "식단을 불러오지 못했습니다.";
     showError("식단 데이터 요청에 실패했습니다.");
   });
-

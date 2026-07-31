@@ -79,6 +79,18 @@ export async function handleRequest(request, env, fetchImpl = fetch) {
   const utterance = String(payload?.userRequest?.utterance || "");
   const target = selectTarget(data, utterance, new Date());
   const text = formatMenu(data, target);
+  const imageMenu = target.restaurantKey
+    ? data.restaurants[target.restaurantKey]?.imageMenu
+    : null;
+  const imageUrl = resolveMenuImageUrl(env.MENU_DATA_URL, imageMenu?.imagePath);
+  if (imageUrl) {
+    return kakaoImage(
+      text,
+      imageUrl,
+      medicineImageAltText(data.restaurants[target.restaurantKey]),
+      quickReplies(target)
+    );
+  }
   return kakaoText(text, quickReplies(target));
 }
 
@@ -217,6 +229,22 @@ export function formatMenu(data, target) {
 
   if (target.restaurantKey) {
     const restaurant = data.restaurants[target.restaurantKey];
+    if (restaurant.imageMenu) {
+      const image = restaurant.imageMenu;
+      const requestedDateNotice =
+        target.date >= image.weekStart && target.date <= image.weekEnd
+          ? "요청한 날짜가 포함된 주간표입니다."
+          : `현재 보관된 최신 주간표입니다. 요청 날짜: ${target.date}`;
+      return truncate([
+        `🍚 ${restaurant.shortName} · ${restaurant.weekRange}`,
+        "",
+        requestedDateNotice,
+        "이미지를 눌러 확대해 주세요.",
+        "",
+        `갱신: ${restaurant.fetchedAt || data.generatedAt || "확인 불가"}`,
+        restaurant.sourceUrl
+      ].join("\n"));
+    }
     const entries = restaurant.days?.[target.date]?.[target.mealType] || [];
     if (!entries.length) {
       return [
@@ -301,7 +329,7 @@ function formatKoreanDate(isoDate) {
 }
 
 function quickReplies(target) {
-  return ["자연계", "산학관", "학생회관", "안암학사"].map((name) => ({
+  return ["자연계", "산학관", "학생회관", "안암학사", "의대본관"].map((name) => ({
     label: name,
     action: "message",
     messageText: `${name} ${target.date} ${target.mealType}`
@@ -316,6 +344,56 @@ function kakaoText(text, quickReplies = []) {
       quickReplies
     }
   });
+}
+
+function kakaoImage(text, imageUrl, altText, quickReplies = []) {
+  return jsonResponse({
+    version: "2.0",
+    template: {
+      outputs: [
+        { simpleText: { text: truncate(text) } },
+        {
+          simpleImage: {
+            imageUrl,
+            altText: String(altText || "의대본관 주간 식단표").slice(0, 50)
+          }
+        }
+      ],
+      quickReplies
+    }
+  });
+}
+
+function medicineImageAltText(restaurant) {
+  return `${restaurant?.shortName || "의대본관"} ${restaurant?.weekRange || ""} 주간 식단표`
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function resolveMenuImageUrl(menuDataUrl, imagePath) {
+  if (
+    typeof imagePath !== "string" ||
+    !/^medicine-menu\/article-\d+\.(?:png|jpg)$/i.test(imagePath)
+  ) {
+    return null;
+  }
+  try {
+    const dataUrl = new URL(menuDataUrl);
+    const imageUrl = new URL(imagePath, dataUrl);
+    if (
+      imageUrl.protocol !== "https:" ||
+      imageUrl.origin !== dataUrl.origin ||
+      imageUrl.username ||
+      imageUrl.password ||
+      imageUrl.search ||
+      imageUrl.hash
+    ) {
+      return null;
+    }
+    return imageUrl.href;
+  } catch {
+    return null;
+  }
 }
 
 function jsonResponse(body, status = 200) {
