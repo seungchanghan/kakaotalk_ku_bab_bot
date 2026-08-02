@@ -54,7 +54,7 @@ python3 -m unittest discover -s tests
 https://GITHUB_USERNAME.github.io/REPOSITORY_NAME/data/menu.json
 ```
 
-워크플로는 한국시간 07:05, 10:05, 16:05, 20:05에 다시 수집합니다.
+워크플로는 매일 한국시간 07:00에 다시 수집합니다.
 직전 Pages JSON과 새 데이터를 병합해 최근 90일 식단을 유지합니다. 일부
 식당 수집이 실패하면 해당 식당의 최근 정상 기록을 보존하고, 전부 실패하면
 배포 단계로 넘어가지 않아 마지막 정상 배포가 유지됩니다. 누적 JSON은
