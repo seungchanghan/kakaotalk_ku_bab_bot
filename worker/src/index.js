@@ -332,7 +332,7 @@ function quickReplies(target) {
   return ["자연계", "산학관", "학생회관", "안암학사", "의대본관"].map((name) => ({
     label: name,
     action: "message",
-    messageText: `${name} ${target.date} ${target.mealType}`
+    messageText: `${name} ${target.mealType}`
   }));
 }
 

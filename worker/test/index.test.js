@@ -179,6 +179,10 @@ test("Kakao endpoint validates secret and returns version 2.0", async () => {
   assert.equal(response.status, 200);
   assert.equal(body.version, "2.0");
   assert.match(body.template.outputs[0].simpleText.text, /제육덮밥/);
+  assert.equal(body.template.quickReplies[0].messageText, "자연계 중식");
+  assert.ok(
+    body.template.quickReplies.every((reply) => !reply.messageText.includes("2026-07-30"))
+  );
 });
 
 test("medicine cafeteria returns text and a hosted simpleImage", async () => {
