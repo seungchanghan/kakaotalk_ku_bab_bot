@@ -31,6 +31,7 @@ WEEKLY_TITLE_RE = re.compile(
 )
 MAX_API_BYTES = 2 * 1024 * 1024
 MAX_IMAGE_BYTES = 5 * 1024 * 1024
+MAX_MENU_PERIOD_DAYS = 31
 
 
 @dataclass(frozen=True)
@@ -145,8 +146,8 @@ def _parse_week(mmdd_start: str, mmdd_end: str, created_ms: object) -> tuple[dat
         week_end = date(end_year, end_month, end_day)
     except ValueError as error:
         raise ValueError("주간식단표 종료일을 해석하지 못했습니다.") from error
-    # ponytail: cap at 14 days; derive a source-defined maximum if longer ranges appear.
-    if not 0 <= (week_end - week_start).days <= 14:
+    # ponytail: accept weekly to monthly source notices; keep a finite sanity cap.
+    if not 0 <= (week_end - week_start).days <= MAX_MENU_PERIOD_DAYS:
         raise ValueError("주간식단표 기간이 예상 범위를 벗어났습니다.")
     return week_start, week_end
 
