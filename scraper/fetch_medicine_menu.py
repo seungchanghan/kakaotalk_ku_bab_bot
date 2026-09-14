@@ -145,7 +145,8 @@ def _parse_week(mmdd_start: str, mmdd_end: str, created_ms: object) -> tuple[dat
         week_end = date(end_year, end_month, end_day)
     except ValueError as error:
         raise ValueError("주간식단표 종료일을 해석하지 못했습니다.") from error
-    if not 0 <= (week_end - week_start).days <= 7:
+    # ponytail: cap at 14 days; derive a source-defined maximum if longer ranges appear.
+    if not 0 <= (week_end - week_start).days <= 14:
         raise ValueError("주간식단표 기간이 예상 범위를 벗어났습니다.")
     return week_start, week_end
 

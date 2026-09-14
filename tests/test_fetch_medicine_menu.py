@@ -71,6 +71,14 @@ class MedicineMenuCollectorTest(unittest.TestCase):
 
         self.assertEqual(notice.article_no, 56059)
 
+    def test_accepts_a_two_week_menu_image_period(self):
+        notice = MODULE.select_latest_weekly_notice(
+            notice_payload("[의과대학본관식당] 주간식단표(0706-0717)")
+        )
+
+        self.assertEqual(notice.week_start.isoformat(), "2026-07-06")
+        self.assertEqual(notice.week_end.isoformat(), "2026-07-17")
+
     def test_rejects_a_list_without_a_weekly_menu_image(self):
         with self.assertRaisesRegex(ValueError, "주간식단표 이미지"):
             MODULE.select_latest_weekly_notice(
